@@ -350,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: const Color(0xFF1E212D),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
+      builder: (bsContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -361,15 +361,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.document_scanner, color: const Color(0xFF00E5FF), 
                   title: 'Escanear com Câmera', subtitle: 'Detecção inteligente de bordas',
                   onTap: () async {
-                    Navigator.pop(context);
+                    Navigator.pop(bsContext);
                     try {
                       List<String>? pictures = await CunningDocumentScanner.getPictures();
-                      if (pictures != null && pictures.isNotEmpty && context.mounted) {
+                      if (pictures != null && pictures.isNotEmpty && mounted) {
                         await Navigator.push(context, MaterialPageRoute(builder: (_) => DocumentPreviewScreen(imagePaths: pictures)));
                         _loadDocuments(); // Reload after back
                       }
                     } catch (e) {
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: \$e')));
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: \$e')));
                     }
                   }
                 ),
@@ -378,10 +378,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.image, color: const Color(0xFFAA00FF), 
                   title: 'Importar Imagens', subtitle: 'Criar PDF a partir da galeria',
                   onTap: () async {
-                    Navigator.pop(context);
+                    Navigator.pop(bsContext);
                     final ImagePicker picker = ImagePicker();
                     final List<XFile>? images = await picker.pickMultiImage();
-                    if (images != null && images.isNotEmpty && context.mounted) {
+                    if (images != null && images.isNotEmpty && mounted) {
                       List<String> paths = images.map((img) => img.path).toList();
                       await Navigator.push(context, MaterialPageRoute(builder: (_) => DocumentPreviewScreen(imagePaths: paths)));
                       _loadDocuments();
@@ -393,10 +393,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icons.text_snippet, color: Colors.orangeAccent, 
                   title: 'Extrair Texto (OCR)', subtitle: 'Ler texto de uma foto existente',
                   onTap: () async {
-                    Navigator.pop(context);
+                    Navigator.pop(bsContext);
                     final ImagePicker picker = ImagePicker();
                     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-                    if (image != null && context.mounted) {
+                    if (image != null && mounted) {
                       await Navigator.push(context, MaterialPageRoute(builder: (_) => DocumentPreviewScreen(imagePaths: [image.path])));
                       _loadDocuments();
                     }
@@ -436,20 +436,31 @@ class _NavIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: isActive ? const Color(0xFF00E5FF) : Colors.white30, size: 28),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            color: isActive ? const Color(0xFF00E5FF) : Colors.white30,
-            fontSize: 10,
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-          ),
-        )
-      ],
+    return InkWell(
+      onTap: () {
+        if (!isActive) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('\$label: Em Desenvolvimento')));
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: isActive ? const Color(0xFF00E5FF) : Colors.white30, size: 28),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? const Color(0xFF00E5FF) : Colors.white30,
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              ),
+            )
+          ],
+        ),
+      ),
     );
   }
 }
