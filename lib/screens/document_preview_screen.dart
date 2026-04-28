@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:docx_creator/docx_creator.dart';
@@ -20,51 +22,7 @@ class DocumentPreviewScreen extends StatefulWidget {
 
 class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
   bool _isProcessing = false;
-  String _ocrText = '';
-
-  Future<void> _extractText(String imagePath) async {
-    setState(() => _isProcessing = true);
-    try {
-      final inputImage = InputImage.fromFilePath(imagePath);
-      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      
-      setState(() {
-        _ocrText = recognizedText.text;
-      });
-      
-      textRecognizer.close();
-      
-      if (mounted) {
-        _showOcrResultDialog();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppTranslations.get('error')}: $e')));
-      }
-    } finally {
-      setState(() => _isProcessing = false);
-    }
-  }
-
-  void _showOcrResultDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E212D),
-        title: Text(AppTranslations.get('extract_text'), style: const TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Text(_ocrText.isEmpty ? AppTranslations.get('no_docs') : _ocrText, style: const TextStyle(color: Colors.white70)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Color(0xFF00E5FF))),
-          ),
-        ],
-      ),
-    );
-  }
+  // Estado de OCR movido para widget filho
 
   Future<void> _saveDocumentHistory(String title, String path, int size, String type) async {
     final prefs = await SharedPreferences.getInstance();
@@ -316,32 +274,127 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
             itemCount: widget.imagePaths.length,
             itemBuilder: (context, index) {
               final path = widget.imagePaths[index];
-              return Card(
-                color: const Color(0xFF1E212D),
-                margin: const EdgeInsets.all(16),
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: Column(
-                  children: [
-                    Image.file(File(path)),
-                    Container(
-                      color: Colors.black12,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          TextButton.icon(
-                            icon: const Icon(Icons.text_fields, color: Colors.orangeAccent),
-                            label: Text(AppTranslations.get('preview'), style: const TextStyle(color: Colors.white70)),
-                            onPressed: () => _extractText(path),
-                          ),
-                        ],
-                      ),
-                    )
-                  ],
-                ),
-              );
+              return DocumentPageCard(imagePath: path);
             },
           ),
+    );
+  }
+}
+
+class DocumentPageCard extends StatefulWidget {
+  final String imagePath;
+  const DocumentPageCard({super.key, required this.imagePath});
+  @override
+  State<DocumentPageCard> createState() => _DocumentPageCardState();
+}class _DocumentPageCardState extends State<DocumentPageCard> {
+  bool _isExtracting = true;
+  String _extractedText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _extractText(); // Extrair texto automaticamente ao carregar
+  }
+
+  Future<void> _extractText() async {
+    try {
+      final inputImage = InputImage.fromFilePath(widget.imagePath);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      if (mounted) {
+        setState(() {
+          _extractedText = recognizedText.text;
+        });
+      }
+      textRecognizer.close();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('\${AppTranslations.get('error')}: \$e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExtracting = false);
+      }
+    }
+  }
+
+  Future<void> _searchInGemini() async {
+    if (_isExtracting) return; // Aguarde a extração
+    if (_extractedText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppTranslations.get('no_docs'))));
+      return;
+    }
+    
+    // Copiar para a área de transferência
+    await Clipboard.setData(ClipboardData(text: _extractedText));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('\${AppTranslations.get('text_copied')} - Cole no Gemini!')));
+    }
+    
+    // Launch Gemini
+    final Uri url = Uri.parse('https://gemini.google.com/app');
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not launch Gemini')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: const Color(0xFF1E212D),
+      margin: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        children: [
+          // Content Area - Always show Image
+          Image.file(File(widget.imagePath)),
+          
+          // Action Bar
+          Container(
+            color: Colors.black12,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                if (_isExtracting)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SizedBox(
+                      width: 20, height: 20, 
+                      child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2)
+                    ),
+                  ),
+                if (!_isExtracting) ...[
+                  TextButton.icon(
+                    icon: const Icon(Icons.copy, color: Colors.white70),
+                    label: Text(AppTranslations.get('copy_text'), style: const TextStyle(color: Colors.white70)),
+                    onPressed: () {
+                      if (_extractedText.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppTranslations.get('no_docs'))));
+                        return;
+                      }
+                      Clipboard.setData(ClipboardData(text: _extractedText));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppTranslations.get('text_copied'))));
+                    },
+                  ),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.auto_awesome, color: Colors.white),
+                    label: const Text('Gemini', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFAA00FF),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _searchInGemini,
+                  ),
+                ]
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,5 +1,1 @@
-package com.antigravity.pdfscanner.pdf_scanner
-
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity : FlutterActivity()
+// This file is deprecated. The active MainActivity is now located at com.antcarv.pdf_scan

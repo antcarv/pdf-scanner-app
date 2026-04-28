@@ -31,6 +31,11 @@ class AppTranslations {
       'file_not_found': 'Arquivo não encontrado.',
       'pages': 'Páginas',
       'preview': 'Prever',
+      'copy_text': 'Copiar',
+      'search_gemini': 'Gemini',
+      'mode_image': 'Imagem',
+      'mode_text': 'Texto',
+      'text_copied': 'Texto copiado para área de transferência!',
     },
     'en': {
       'recent': 'RECENT',
@@ -63,6 +68,11 @@ class AppTranslations {
       'file_not_found': 'File not found.',
       'pages': 'Pages',
       'preview': 'Preview',
+      'copy_text': 'Copy',
+      'search_gemini': 'Gemini',
+      'mode_image': 'Image',
+      'mode_text': 'Text',
+      'text_copied': 'Text copied to clipboard!',
     }
   };
 
