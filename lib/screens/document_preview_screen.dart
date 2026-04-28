@@ -309,7 +309,7 @@ class DocumentPageCard extends StatefulWidget {
       textRecognizer.close();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('\${AppTranslations.get('error')}: \$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppTranslations.get('error')}: $e')));
       }
     } finally {
       if (mounted) {
@@ -328,7 +328,7 @@ class DocumentPageCard extends StatefulWidget {
     // Copiar para a área de transferência
     await Clipboard.setData(ClipboardData(text: _extractedText));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('\${AppTranslations.get('text_copied')} - Cole no Gemini!')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppTranslations.get('text_copied')} - Cole no Gemini!')));
     }
     
     // Launch Gemini
@@ -350,7 +350,10 @@ class DocumentPageCard extends StatefulWidget {
       child: Column(
         children: [
           // Content Area - Always show Image
-          Image.file(File(widget.imagePath)),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.55),
+            child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
+          ),
           
           // Action Bar
           Container(
