@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:docx_creator/docx_creator.dart';
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
+import 'package:image_picker/image_picker.dart';
 import '../utils/translations.dart';
 
 class DocumentPreviewScreen extends StatefulWidget {
@@ -22,7 +24,13 @@ class DocumentPreviewScreen extends StatefulWidget {
 
 class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
   bool _isProcessing = false;
-  // Estado de OCR movido para widget filho
+  late List<String> _currentImagePaths;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentImagePaths = List.from(widget.imagePaths);
+  }
 
   Future<void> _saveDocumentHistory(String title, String path, int size, String type) async {
     final prefs = await SharedPreferences.getInstance();
@@ -82,7 +90,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
       try {
         final pdf = pw.Document();
 
-        for (var path in widget.imagePaths) {
+        for (var path in _currentImagePaths) {
           final image = pw.MemoryImage(
             File(path).readAsBytesSync(),
           );
@@ -125,8 +133,8 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
         builder.h1(title);
 
         builder.p('Texto extraído pelo PDFscan:');
-        for (var i = 0; i < widget.imagePaths.length; i++) {
-          final inputImage = InputImage.fromFilePath(widget.imagePaths[i]);
+        for (var i = 0; i < _currentImagePaths.length; i++) {
+          final inputImage = InputImage.fromFilePath(_currentImagePaths[i]);
           final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
           final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
           builder.h3('Página ${i + 1}');
@@ -162,10 +170,10 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
       try {
         final output = await getApplicationDocumentsDirectory();
         
-        for (var i = 0; i < widget.imagePaths.length; i++) {
+        for (var i = 0; i < _currentImagePaths.length; i++) {
           final String fileTitle = "${title}_${i+1}";
           final String destPath = "${output.path}/$fileTitle.jpg";
-          final file = await File(widget.imagePaths[i]).copy(destPath);
+          final file = await File(_currentImagePaths[i]).copy(destPath);
           await _saveDocumentHistory(fileTitle, destPath, await file.length(), 'JPEG');
         }
 
@@ -255,7 +263,7 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('${widget.imagePaths.length} ${AppTranslations.get('pages')}', style: const TextStyle(color: Colors.white)),
+        title: Text('${_currentImagePaths.length} ${AppTranslations.get('pages')}', style: const TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: const Icon(Icons.save_alt, color: Color(0xFF00E5FF)),
@@ -271,12 +279,69 @@ class _DocumentPreviewScreenState extends State<DocumentPreviewScreen> {
             Text(AppTranslations.get('processing'), style: const TextStyle(color: Colors.white54))
           ]))
         : ListView.builder(
-            itemCount: widget.imagePaths.length,
+            itemCount: _currentImagePaths.length,
             itemBuilder: (context, index) {
-              final path = widget.imagePaths[index];
+              final path = _currentImagePaths[index];
               return DocumentPageCard(imagePath: path);
             },
           ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF00E5FF),
+        icon: const Icon(Icons.add_photo_alternate, color: Colors.black87),
+        label: const Text('Adicionar', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        onPressed: _showAddOptionsDialog,
+      ),
+    );
+  }
+
+  void _showAddOptionsDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E212D),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: Color(0xFF00E5FF)),
+                  title: const Text('Escanear com Câmera', style: TextStyle(color: Colors.white)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    try {
+                      List<String>? pictures = await CunningDocumentScanner.getPictures();
+                      if (pictures != null && pictures.isNotEmpty && mounted) {
+                        setState(() {
+                          _currentImagePaths.addAll(pictures);
+                        });
+                      }
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppTranslations.get('error')}: $e')));
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.image, color: Color(0xFFAA00FF)),
+                  title: const Text('Adicionar da Galeria', style: TextStyle(color: Colors.white)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final ImagePicker picker = ImagePicker();
+                    final List<XFile>? images = await picker.pickMultiImage();
+                    if (images != null && images.isNotEmpty && mounted) {
+                      setState(() {
+                        _currentImagePaths.addAll(images.map((img) => img.path));
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -287,6 +352,7 @@ class DocumentPageCard extends StatefulWidget {
   @override
   State<DocumentPageCard> createState() => _DocumentPageCardState();
 }class _DocumentPageCardState extends State<DocumentPageCard> {
+  bool _isTextMode = false;
   bool _isExtracting = true;
   String _extractedText = '';
 
@@ -349,10 +415,56 @@ class DocumentPageCard extends StatefulWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
-          // Content Area - Always show Image
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.55),
-            child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
+          // Mode Toggle
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ChoiceChip(
+                  label: Text(AppTranslations.get('mode_image')),
+                  selected: !_isTextMode,
+                  onSelected: (val) => setState(() => _isTextMode = false),
+                  selectedColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                  labelStyle: TextStyle(color: !_isTextMode ? const Color(0xFF00E5FF) : Colors.white54),
+                ),
+                const SizedBox(width: 16),
+                ChoiceChip(
+                  label: Text(AppTranslations.get('mode_text')),
+                  selected: _isTextMode,
+                  onSelected: (val) => setState(() => _isTextMode = true),
+                  selectedColor: const Color(0xFFAA00FF).withOpacity(0.2),
+                  labelStyle: TextStyle(color: _isTextMode ? const Color(0xFFAA00FF) : Colors.white54),
+                ),
+              ],
+            ),
+          ),
+          
+          // Content Area
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 300),
+            crossFadeState: _isTextMode ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            firstChild: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.50),
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Image.file(File(widget.imagePath), fit: BoxFit.contain),
+              ),
+            ),
+            secondChild: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              color: const Color(0xFF1E212D),
+              constraints: BoxConstraints(minHeight: 200, maxHeight: MediaQuery.of(context).size.height * 0.50),
+              child: _isExtracting
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)))
+                : SingleChildScrollView(
+                    child: Text(
+                      _extractedText.isEmpty ? AppTranslations.get('no_docs') : _extractedText,
+                      style: const TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                  ),
+            ),
           ),
           
           // Action Bar

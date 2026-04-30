@@ -8,8 +8,10 @@ import 'package:open_filex/open_filex.dart';
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../utils/translations.dart';
 import 'document_preview_screen.dart';
+import 'package:path_provider/path_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,8 +26,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   bool _isSearching = false;
   String _searchQuery = '';
-  int _tabIndex = 0; // 0 = Recent, 1 = Folders
+  int _tabIndex = 0; // 0 = Recent, 1 = Folders, 2 = Files
   String _selectedFolderGrid = ''; // When inside a folder
+  
+  List<File> _externalFiles = [];
+  bool _hasStoragePermission = false;
+  bool _isLoadingExternalFiles = false;
 
   @override
   void initState() {
@@ -260,6 +266,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() { _tabIndex = 2; _selectedFolderGrid = ''; });
+                _checkPermissionsAndLoadFiles();
+              },
+              child: Column(
+                children: [
+                  Text(
+                    AppTranslations.get('files'),
+                    style: TextStyle(
+                      color: _tabIndex == 2 ? const Color(0xFF00E5FF) : Colors.white30, 
+                      fontWeight: FontWeight.bold, 
+                      letterSpacing: 1.5
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: _tabIndex == 2 ? const Color(0xFF00E5FF) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(2),
+                      boxShadow: _tabIndex == 2 ? [
+                        BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.5), blurRadius: 6, spreadRadius: 1)
+                      ] : null,
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -268,13 +305,262 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBody() {
     if (_tabIndex == 0) {
       return _buildDocumentList();
-    } else {
+    } else if (_tabIndex == 1) {
       if (_selectedFolderGrid.isNotEmpty) {
         return _buildFolderContents();
       } else {
         return _buildFoldersGrid();
       }
+    } else {
+      return _buildExternalFilesList();
     }
+  }
+
+  Future<void> _checkPermissionsAndLoadFiles() async {
+    if (Platform.isAndroid) {
+      if (await Permission.manageExternalStorage.isGranted || 
+          await Permission.storage.isGranted) {
+        setState(() => _hasStoragePermission = true);
+        _loadExternalFiles();
+      } else {
+        setState(() => _hasStoragePermission = false);
+      }
+    } else {
+      setState(() => _hasStoragePermission = true);
+      _loadExternalFiles();
+    }
+  }
+
+  Future<void> _requestStoragePermission() async {
+    if (Platform.isAndroid) {
+      // For Android 11+ (API 30+)
+      if (await Permission.manageExternalStorage.request().isGranted) {
+        setState(() => _hasStoragePermission = true);
+        _loadExternalFiles();
+        return;
+      }
+      
+      // For older Android versions
+      if (await Permission.storage.request().isGranted) {
+        setState(() => _hasStoragePermission = true);
+        _loadExternalFiles();
+        return;
+      }
+      
+      setState(() => _hasStoragePermission = false);
+    }
+  }
+
+  Future<void> _loadExternalFiles() async {
+    setState(() => _isLoadingExternalFiles = true);
+    List<File> files = [];
+    try {
+      final downloadDir = Directory('/storage/emulated/0/Download');
+      if (downloadDir.existsSync()) {
+        final list = downloadDir.listSync(recursive: false).whereType<File>().where((f) {
+           final ext = f.path.toLowerCase();
+           return ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.docx');
+        });
+        files.addAll(list);
+      }
+      final documentsDir = Directory('/storage/emulated/0/Documents');
+      if (documentsDir.existsSync()) {
+        final list = documentsDir.listSync(recursive: false).whereType<File>().where((f) {
+           final ext = f.path.toLowerCase();
+           return ext.endsWith('.pdf') || ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.docx');
+        });
+        files.addAll(list);
+      }
+    } catch (e) {
+      debugPrint('Error loading external files: $e');
+    }
+    
+    // Sort files by modified date (newest first)
+    files.sort((a, b) {
+      try {
+        return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+      } catch (_) {
+        return 0;
+      }
+    });
+
+    setState(() {
+      _externalFiles = files;
+      _isLoadingExternalFiles = false;
+    });
+  }
+
+  Widget _buildExternalFilesList() {
+    if (!_hasStoragePermission) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.folder_off, size: 64, color: Colors.white54),
+            const SizedBox(height: 16),
+            Text(AppTranslations.get('permission_denied'), style: const TextStyle(color: Colors.white54)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00E5FF),
+              ),
+              onPressed: _requestStoragePermission,
+              child: Text(AppTranslations.get('grant_permission'), style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+            )
+          ],
+        ),
+      );
+    }
+
+    if (_isLoadingExternalFiles) {
+      return const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)));
+    }
+
+    if (_externalFiles.isEmpty) {
+      return Center(
+        child: Text(AppTranslations.get('no_docs'), style: const TextStyle(color: Colors.white54)),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadExternalFiles,
+      color: const Color(0xFF00E5FF),
+      backgroundColor: const Color(0xFF1E212D),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 100),
+        itemCount: _externalFiles.length,
+        itemBuilder: (context, index) {
+          final file = _externalFiles[index];
+          final String name = file.path.split('/').last;
+          final int size = file.lengthSync();
+          final String ext = name.split('.').last.toUpperCase();
+          final DateTime modified = file.lastModifiedSync();
+          
+          return GestureDetector(
+            onTap: () {
+              OpenFilex.open(file.path);
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, spreadRadius: 1)
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E212D),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        ext == 'PDF' ? Icons.picture_as_pdf : (ext == 'DOCX' ? Icons.text_snippet : Icons.image),
+                        color: ext == 'PDF' ? Colors.redAccent : (ext == 'DOCX' ? Colors.orangeAccent : Colors.blueAccent),
+                        size: 32,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Text(
+                              '${_formatDateRel(modified.toIso8601String())}, ${_formatSize(size)}',
+                              style: const TextStyle(color: Colors.white54, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (_folders.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.drive_file_move, color: Color(0xFF00E5FF)),
+                      onPressed: () => _importExternalFileToFolder(file, name, size, ext),
+                      tooltip: AppTranslations.get('move_folder'),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _importExternalFileToFolder(File originalFile, String name, int size, String ext) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E212D),
+        title: Text(AppTranslations.get('move_folder'), style: const TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _folders.length,
+            itemBuilder: (context, index) {
+              return ListTile(
+                title: Text(_folders[index], style: const TextStyle(color: Colors.white)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  // Copy file to app directory to make it part of the app's documents
+                  try {
+                    final appDir = await getApplicationDocumentsDirectory();
+                    final String newPath = '${appDir.path}/imported_$name';
+                    await originalFile.copy(newPath);
+                    
+                    final docInfo = {
+                      'title': name,
+                      'path': newPath,
+                      'date': DateTime.now().toIso8601String(),
+                      'size': size,
+                      'type': ext,
+                      'folder': _folders[index],
+                    };
+                    
+                    setState(() {
+                      _documents.insert(0, docInfo);
+                    });
+                    _saveDocuments();
+                    
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppTranslations.get('success'))));
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${AppTranslations.get('error')}: $e')));
+                    }
+                  }
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppTranslations.get('cancel'))),
+        ],
+      )
+    );
   }
 
   Widget _buildFoldersGrid() {

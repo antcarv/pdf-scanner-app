@@ -3,6 +3,7 @@ class AppTranslations {
     'pt': {
       'recent': 'RECENTES',
       'folders': 'PASTAS',
+      'files': 'ARQUIVOS',
       'no_docs': 'Nenhum documento ainda',
       'search_hint': 'Pesquisar...',
       'about_author': 'Sobre o Autor',
@@ -36,10 +37,13 @@ class AppTranslations {
       'mode_image': 'Imagem',
       'mode_text': 'Texto',
       'text_copied': 'Texto copiado para área de transferência!',
+      'grant_permission': 'Conceder Permissão',
+      'permission_denied': 'Permissão de armazenamento negada.',
     },
     'en': {
       'recent': 'RECENT',
       'folders': 'FOLDERS',
+      'files': 'FILES',
       'no_docs': 'No documents yet',
       'search_hint': 'Search...',
       'about_author': 'About the Author',
@@ -73,6 +77,8 @@ class AppTranslations {
       'mode_image': 'Image',
       'mode_text': 'Text',
       'text_copied': 'Text copied to clipboard!',
+      'grant_permission': 'Grant Permission',
+      'permission_denied': 'Storage permission denied.',
     }
   };
 
