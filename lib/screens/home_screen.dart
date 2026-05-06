@@ -563,8 +563,60 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  List<String> _getSubfolders(String? parentPath) {
+    if (parentPath == null || parentPath.isEmpty) {
+      return _folders.where((f) => !f.contains('/')).toList();
+    } else {
+      String prefix = '$parentPath/';
+      return _folders.where((f) {
+        if (!f.startsWith(prefix)) return false;
+        String remaining = f.substring(prefix.length);
+        return remaining.isNotEmpty && !remaining.contains('/');
+      }).toList();
+    }
+  }
+
+  void _showFolderOptions(String folderPath) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E212D),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.white),
+              title: Text(AppTranslations.get('rename_folder'), style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _renameFolderDialog(folderPath);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.drive_file_move, color: Colors.white),
+              title: Text(AppTranslations.get('move_folder'), style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _moveFolderDialog(folderPath);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.redAccent),
+              title: Text(AppTranslations.get('delete_folder'), style: const TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteFolderDialog(folderPath);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFoldersGrid() {
-    if (_folders.isEmpty) {
+    List<String> rootFolders = _getSubfolders('');
+    if (rootFolders.isEmpty) {
       return Center(
         child: Text(AppTranslations.get('no_docs'), style: const TextStyle(color: Colors.white54)),
       );
@@ -575,13 +627,15 @@ class _HomeScreenState extends State<HomeScreen> {
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2, mainAxisSpacing: 16, crossAxisSpacing: 16, childAspectRatio: 1.1
       ),
-      itemCount: _folders.length,
+      itemCount: rootFolders.length,
       itemBuilder: (context, index) {
-        final folder = _folders[index];
-        final docCount = _documents.where((d) => d['folder'] == folder).length;
+        final folderPath = rootFolders[index];
+        final folderName = folderPath.split('/').last;
+        final docCount = _documents.where((d) => (d['folder'] as String?)?.startsWith(folderPath) ?? false).length;
         
         return GestureDetector(
-          onTap: () => setState(() => _selectedFolderGrid = folder),
+          onTap: () => setState(() => _selectedFolderGrid = folderPath),
+          onLongPress: () => _showFolderOptions(folderPath),
           child: Container(
             decoration: BoxDecoration(
               color: const Color(0xFF1E212D),
@@ -593,7 +647,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 const Icon(Icons.folder, size: 48, color: Color(0xFF00E5FF)),
                 const SizedBox(height: 12),
-                Text(folder, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Text(folderName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 Text('$docCount doc(s)', style: const TextStyle(color: Colors.white54, fontSize: 12)),
               ],
             ),
@@ -610,8 +664,16 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => setState(() => _selectedFolderGrid = '')),
-              Text(_selectedFolderGrid, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () {
+                setState(() {
+                  if (_selectedFolderGrid.contains('/')) {
+                    _selectedFolderGrid = _selectedFolderGrid.substring(0, _selectedFolderGrid.lastIndexOf('/'));
+                  } else {
+                    _selectedFolderGrid = '';
+                  }
+                });
+              }),
+              Text(_selectedFolderGrid.split('/').last, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
         ),
@@ -626,9 +688,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     
     List<Map<String, dynamic>> displayDocs = _documents;
+    List<String> subfolders = [];
 
     if (inFolder != null) {
       displayDocs = displayDocs.where((d) => d['folder'] == inFolder).toList();
+      if (_searchQuery.isEmpty) {
+        subfolders = _getSubfolders(inFolder);
+      }
     }
 
     if (_searchQuery.isNotEmpty) {
@@ -638,7 +704,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }).toList();
     }
     
-    if (displayDocs.isEmpty) {
+    if (displayDocs.isEmpty && subfolders.isEmpty) {
       return Center(
         child: Text(AppTranslations.get('no_docs'), style: const TextStyle(color: Colors.white54)),
       );
@@ -650,9 +716,45 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: const Color(0xFF1E212D),
       child: ListView.builder(
         padding: const EdgeInsets.only(left: 16, right: 16, bottom: 100),
-        itemCount: displayDocs.length,
+        itemCount: subfolders.length + displayDocs.length,
         itemBuilder: (context, index) {
-          final doc = displayDocs[index];
+          if (index < subfolders.length) {
+            final folderPath = subfolders[index];
+            final folderName = folderPath.split('/').last;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedFolderGrid = folderPath),
+              onLongPress: () => _showFolderOptions(folderPath),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(color: const Color(0xFF1E212D), borderRadius: BorderRadius.circular(12)),
+                      child: const Center(child: Icon(Icons.folder, color: Color(0xFF00E5FF), size: 32)),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text(folderName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.more_horiz, color: Colors.white54),
+                      onPressed: () => _showFolderOptions(folderPath),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final doc = displayDocs[index - subfolders.length];
           return GestureDetector(
             onTap: () {
               if (File(doc['path']).existsSync()) {
@@ -776,13 +878,180 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: Text(AppTranslations.get('cancel'))),
           TextButton(
             onPressed: () {
-              if (ctrl.text.isNotEmpty && !_folders.contains(ctrl.text)) {
-                setState(() => _folders.add(ctrl.text));
-                _saveFolders();
+              if (ctrl.text.isNotEmpty) {
+                if (ctrl.text.contains('/')) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppTranslations.get('folder_name_invalid'))));
+                  return;
+                }
+                String newPath = _selectedFolderGrid.isEmpty ? ctrl.text : '$_selectedFolderGrid/${ctrl.text}';
+                if (!_folders.contains(newPath)) {
+                  setState(() => _folders.add(newPath));
+                  _saveFolders();
+                }
+                Navigator.pop(context);
               }
-              Navigator.pop(context);
             }, 
             child: Text(AppTranslations.get('save'), style: const TextStyle(color: Color(0xFF00E5FF)))
+          ),
+        ],
+      )
+    );
+  }
+
+  void _renameFolderDialog(String oldPath) {
+    final ctrl = TextEditingController(text: oldPath.split('/').last);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E212D),
+        title: Text(AppTranslations.get('rename_folder'), style: const TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: ctrl,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(hintText: AppTranslations.get('new_name'), hintStyle: const TextStyle(color: Colors.white54)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppTranslations.get('cancel'))),
+          TextButton(
+            onPressed: () {
+              if (ctrl.text.isNotEmpty) {
+                if (ctrl.text.contains('/')) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppTranslations.get('folder_name_invalid'))));
+                  return;
+                }
+                String parentPath = oldPath.contains('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+                String newPath = parentPath.isEmpty ? ctrl.text : '$parentPath/${ctrl.text}';
+                
+                if (!_folders.contains(newPath)) {
+                  setState(() {
+                    for (int i = 0; i < _folders.length; i++) {
+                      if (_folders[i] == oldPath) {
+                        _folders[i] = newPath;
+                      } else if (_folders[i].startsWith('$oldPath/')) {
+                        _folders[i] = newPath + _folders[i].substring(oldPath.length);
+                      }
+                    }
+                    for (var doc in _documents) {
+                      String docFolder = doc['folder'] ?? '';
+                      if (docFolder == oldPath) {
+                        doc['folder'] = newPath;
+                      } else if (docFolder.startsWith('$oldPath/')) {
+                        doc['folder'] = newPath + docFolder.substring(oldPath.length);
+                      }
+                    }
+                    if (_selectedFolderGrid == oldPath) {
+                      _selectedFolderGrid = newPath;
+                    } else if (_selectedFolderGrid.startsWith('$oldPath/')) {
+                      _selectedFolderGrid = newPath + _selectedFolderGrid.substring(oldPath.length);
+                    }
+                  });
+                  _saveFolders();
+                  _saveDocuments();
+                }
+                Navigator.pop(context);
+              }
+            }, 
+            child: Text(AppTranslations.get('save'), style: const TextStyle(color: Color(0xFF00E5FF)))
+          ),
+        ],
+      )
+    );
+  }
+
+  void _moveFolderDialog(String currentPath) {
+    List<String> eligibleFolders = _folders.where((f) => f != currentPath && !f.startsWith('$currentPath/')).toList();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E212D),
+        title: Text(AppTranslations.get('move_folder_to'), style: const TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: eligibleFolders.length + 1,
+            itemBuilder: (context, index) {
+              String destPath = index == 0 ? '' : eligibleFolders[index - 1];
+              String destName = index == 0 ? AppTranslations.get('root_directory') : destPath.split('/').last;
+              return ListTile(
+                leading: Icon(index == 0 ? Icons.home : Icons.folder, color: Colors.white54),
+                title: Text(destName, style: const TextStyle(color: Colors.white)),
+                onTap: () {
+                  String folderName = currentPath.split('/').last;
+                  String newPath = destPath.isEmpty ? folderName : '$destPath/$folderName';
+                  
+                  if (!_folders.contains(newPath)) {
+                    setState(() {
+                      for (int i = 0; i < _folders.length; i++) {
+                        if (_folders[i] == currentPath) {
+                          _folders[i] = newPath;
+                        } else if (_folders[i].startsWith('$currentPath/')) {
+                          _folders[i] = newPath + _folders[i].substring(currentPath.length);
+                        }
+                      }
+                      for (var doc in _documents) {
+                        String docFolder = doc['folder'] ?? '';
+                        if (docFolder == currentPath) {
+                          doc['folder'] = newPath;
+                        } else if (docFolder.startsWith('$currentPath/')) {
+                          doc['folder'] = newPath + docFolder.substring(currentPath.length);
+                        }
+                      }
+                      if (_selectedFolderGrid == currentPath) {
+                        _selectedFolderGrid = newPath;
+                      } else if (_selectedFolderGrid.startsWith('$currentPath/')) {
+                        _selectedFolderGrid = newPath + _selectedFolderGrid.substring(currentPath.length);
+                      }
+                    });
+                    _saveFolders();
+                    _saveDocuments();
+                  }
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppTranslations.get('cancel'))),
+        ],
+      )
+    );
+  }
+
+  void _deleteFolderDialog(String folderPath) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E212D),
+        title: Text(AppTranslations.get('delete_folder'), style: const TextStyle(color: Colors.redAccent)),
+        content: Text(AppTranslations.get('delete_folder_confirm'), style: const TextStyle(color: Colors.white)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppTranslations.get('cancel'), style: const TextStyle(color: Colors.white54))),
+          TextButton(
+            onPressed: () async {
+              setState(() {
+                _folders.removeWhere((f) => f == folderPath || f.startsWith('$folderPath/'));
+                List<Map<String, dynamic>> toDelete = _documents.where((d) {
+                  String docFolder = d['folder'] ?? '';
+                  return docFolder == folderPath || docFolder.startsWith('$folderPath/');
+                }).toList();
+                for (var doc in toDelete) {
+                  final file = File(doc['path']);
+                  if (file.existsSync()) {
+                    file.deleteSync();
+                  }
+                  _documents.remove(doc);
+                }
+                if (_selectedFolderGrid == folderPath || _selectedFolderGrid.startsWith('$folderPath/')) {
+                  _selectedFolderGrid = folderPath.contains('/') ? folderPath.substring(0, folderPath.lastIndexOf('/')) : '';
+                }
+              });
+              _saveFolders();
+              _saveDocuments();
+              Navigator.pop(context);
+            }, 
+            child: Text(AppTranslations.get('delete'), style: const TextStyle(color: Colors.redAccent))
           ),
         ],
       )
@@ -837,12 +1106,21 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: _folders.length,
+            itemCount: _folders.length + 1,
             itemBuilder: (context, index) {
+              String destPath = index == 0 ? '' : _folders[index - 1];
+              String destName = index == 0 ? AppTranslations.get('root_directory') : destPath.split('/').last;
               return ListTile(
-                title: Text(_folders[index], style: const TextStyle(color: Colors.white)),
+                leading: Icon(index == 0 ? Icons.home : Icons.folder, color: Colors.white54),
+                title: Text(destName, style: const TextStyle(color: Colors.white)),
                 onTap: () {
-                  setState(() => doc['folder'] = _folders[index]);
+                  setState(() {
+                    if (destPath.isEmpty) {
+                      doc.remove('folder');
+                    } else {
+                      doc['folder'] = destPath;
+                    }
+                  });
                   _saveDocuments();
                   Navigator.pop(context);
                 },

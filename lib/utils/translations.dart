@@ -39,6 +39,12 @@ class AppTranslations {
       'text_copied': 'Texto copiado para área de transferência!',
       'grant_permission': 'Conceder Permissão',
       'permission_denied': 'Permissão de armazenamento negada.',
+      'root_directory': 'Diretório Raiz',
+      'folder_name_invalid': 'O nome da pasta não pode conter o caractere "/".',
+      'move_folder_to': 'Mover pasta para...',
+      'delete_folder_confirm': 'Tem certeza que deseja excluir esta pasta e TODO o seu conteúdo?',
+      'delete_folder': 'Excluir Pasta',
+      'rename_folder': 'Renomear Pasta',
     },
     'en': {
       'recent': 'RECENT',
@@ -79,6 +85,12 @@ class AppTranslations {
       'text_copied': 'Text copied to clipboard!',
       'grant_permission': 'Grant Permission',
       'permission_denied': 'Storage permission denied.',
+      'root_directory': 'Root Directory',
+      'folder_name_invalid': 'Folder name cannot contain the "/" character.',
+      'move_folder_to': 'Move folder to...',
+      'delete_folder_confirm': 'Are you sure you want to delete this folder and ALL its contents?',
+      'delete_folder': 'Delete Folder',
+      'rename_folder': 'Rename Folder',
     }
   };
 
